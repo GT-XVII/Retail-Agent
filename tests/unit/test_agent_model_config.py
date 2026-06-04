@@ -1,5 +1,6 @@
 import pytest
 
+from app.errors import ModelConfigurationError
 from app.config import agent_model
 from app.config.agent_model import AgentModelConfig
 
@@ -61,8 +62,16 @@ def test_get_agent_model_config_defaults_to_airefinery(monkeypatch):
 def test_get_agent_model_config_rejects_unknown_provider(monkeypatch):
     monkeypatch.setenv("AGENT_MODEL_PROVIDER", "unknown")
 
-    with pytest.raises(ValueError, match="Unsupported agent model provider: unknown"):
+    with pytest.raises(ModelConfigurationError) as error:
         agent_model.get_agent_model_config()
+
+    assert error.value.to_response() == {
+        "error": {
+            "code": "model_configuration_error",
+            "message": "Unsupported agent model provider.",
+            "details": {"provider": "unknown"},
+        }
+    }
 
 
 def test_create_chat_model_uses_provider_factory(monkeypatch):
@@ -96,8 +105,28 @@ def test_create_chat_model_rejects_unknown_provider():
         temperature=0.3,
     )
 
-    with pytest.raises(ValueError, match="Unsupported agent model provider: unknown"):
+    with pytest.raises(ModelConfigurationError) as error:
         agent_model.create_chat_model(config)
+
+    assert error.value.details == {"provider": "unknown"}
+
+
+def test_create_openai_compatible_chat_model_requires_api_key():
+    config = AgentModelConfig(
+        provider="airefinery",
+        model="openai/gpt-oss-120b",
+        api_key=None,
+        base_url="https://example.test",
+        temperature=0.3,
+    )
+
+    with pytest.raises(ModelConfigurationError) as error:
+        agent_model.create_openai_compatible_chat_model(config)
+
+    assert error.value.to_response()["error"]["details"] == {
+        "provider": "airefinery",
+        "expected_env": "AIREFINERY_API_KEY",
+    }
 
 
 def test_create_openai_compatible_chat_model_uses_config(monkeypatch):

@@ -5,11 +5,13 @@ from pathlib import Path
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 if __package__ is None:
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+from app.errors import RetailAgentError
 from app.services.cart_service import add_to_cart, view_cart
 from app.services.catalog_service import get_product_details, search_products
 from app.user_chat.models import ChatRequest
@@ -21,11 +23,20 @@ user_chat_service = UserChatService()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RetailAgentError)
+def retail_agent_error_handler(_, error):
+    return JSONResponse(
+        status_code=error.status_code,
+        content=error.to_response(),
+    )
+
 
 class AddToCartRequest(BaseModel):
     product_id: str

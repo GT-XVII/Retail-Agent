@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.errors import AgentExecutionError
 from app.main import app, main
 from app.services import cart_service
 
@@ -200,4 +201,27 @@ def test_chat_endpoint_returns_basic_search_matches(monkeypatch, sample_products
             {"role": "user", "content": "keyboard"},
             {"role": "assistant", "content": "answered keyboard"},
         ],
+    }
+
+
+def test_chat_endpoint_returns_structured_agent_errors(monkeypatch):
+    class FailingUserChatService:
+        def send_message(self, request):
+            raise AgentExecutionError(
+                "Agent failed while calling the model.",
+                details={"type": "RuntimeError", "message": "upstream timeout"},
+            )
+
+    monkeypatch.setattr("app.main.user_chat_service", FailingUserChatService())
+    client = TestClient(app)
+
+    response = client.post("/chat", json={"message": "keyboard"})
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "error": {
+            "code": "agent_execution_error",
+            "message": "Agent failed while calling the model.",
+            "details": {"type": "RuntimeError", "message": "upstream timeout"},
+        }
     }

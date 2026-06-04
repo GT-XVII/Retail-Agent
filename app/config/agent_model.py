@@ -7,6 +7,8 @@ from typing import Callable
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
+from app.errors import ModelConfigurationError
+
 load_dotenv()
 
 
@@ -33,7 +35,10 @@ def get_agent_model_config(provider=None):
     if provider == "openai":
         return _get_openai_config()
 
-    raise ValueError(f"Unsupported agent model provider: {provider}")
+    raise ModelConfigurationError(
+        "Unsupported agent model provider.",
+        details={"provider": provider},
+    )
 
 
 def _get_airefinery_config():
@@ -63,6 +68,15 @@ def _get_openai_config():
 def create_openai_compatible_chat_model(config):
     """Create a ChatOpenAI model for OpenAI-compatible chat APIs."""
 
+    if not config.api_key:
+        raise ModelConfigurationError(
+            "Missing API key for agent model provider.",
+            details={
+                "provider": config.provider,
+                "expected_env": _provider_api_key_env(config.provider),
+            },
+        )
+
     return ChatOpenAI(
         model=config.model,
         api_key=config.api_key,
@@ -84,6 +98,16 @@ def create_chat_model(config=None):
     factory = MODEL_FACTORIES.get(config.provider)
 
     if factory is None:
-        raise ValueError(f"Unsupported agent model provider: {config.provider}")
+        raise ModelConfigurationError(
+            "Unsupported agent model provider.",
+            details={"provider": config.provider},
+        )
 
     return factory(config)
+
+
+def _provider_api_key_env(provider):
+    return {
+        "airefinery": "AIREFINERY_API_KEY",
+        "openai": "OPENAI_API_KEY",
+    }.get(provider, "provider-specific API key environment variable")

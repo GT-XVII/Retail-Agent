@@ -1,4 +1,5 @@
 from app.agent.retail_agent import RetailAgent
+from app.errors import AgentConfigurationError, AgentExecutionError, ModelConfigurationError
 from app.tools import (
     cart_add,
     cart_remove,
@@ -47,6 +48,11 @@ class FakeLangChainAgent:
                 FakeMessage("assistant response"),
             ]
         }
+
+
+class FailingLangChainAgent:
+    def invoke(self, payload):
+        raise RuntimeError("model service unavailable")
 
 
 def test_retail_tools_registry_contains_langchain_tools():
@@ -167,3 +173,79 @@ def test_retail_agent_creates_langchain_agent(monkeypatch, sample_products):
     assert created["model"] is fake_model
     assert created["tools"] == retail_tools
     assert "retail shopping assistant" in created["system_prompt"]
+
+
+def test_retail_agent_preserves_model_configuration_errors(monkeypatch, sample_products):
+    error = ModelConfigurationError("bad model config")
+    monkeypatch.setattr(
+        "app.agent.retail_agent.create_chat_model",
+        lambda: (_ for _ in ()).throw(error),
+    )
+
+    try:
+        RetailAgent(catalog_service=FakeCatalogService(sample_products[0]))
+    except ModelConfigurationError as raised:
+        assert raised is error
+
+
+def test_retail_agent_wraps_agent_creation_errors(monkeypatch, sample_products):
+    monkeypatch.setattr("app.agent.retail_agent.create_chat_model", lambda: object())
+
+    def fail_create_agent(model, tools, system_prompt):
+        raise RuntimeError("bad agent setup")
+
+    monkeypatch.setattr("app.agent.retail_agent.create_agent", fail_create_agent)
+
+    try:
+        RetailAgent(catalog_service=FakeCatalogService(sample_products[0]))
+    except AgentConfigurationError as error:
+        assert error.to_response()["error"]["details"] == {
+            "type": "RuntimeError",
+            "message": "bad agent setup",
+        }
+
+
+def test_retail_agent_wraps_agent_invoke_errors(sample_products):
+    agent = RetailAgent(
+        catalog_service=FakeCatalogService(sample_products[0]),
+        agent=FailingLangChainAgent(),
+    )
+
+    try:
+        agent.run("hello")
+    except AgentExecutionError as error:
+        assert error.status_code == 502
+        assert error.to_response()["error"]["details"] == {
+            "type": "RuntimeError",
+            "message": "model service unavailable",
+        }
+
+
+def test_retail_agent_rejects_empty_or_malformed_agent_responses(sample_products):
+    class EmptyResponseAgent:
+        def invoke(self, payload):
+            return {"messages": []}
+
+    class NoContentResponseAgent:
+        def invoke(self, payload):
+            return {"messages": [object()]}
+
+    agent = RetailAgent(
+        catalog_service=FakeCatalogService(sample_products[0]),
+        agent=EmptyResponseAgent(),
+    )
+
+    try:
+        agent.run("hello")
+    except AgentExecutionError as error:
+        assert error.message == "The LangChain agent returned no messages."
+
+    agent = RetailAgent(
+        catalog_service=FakeCatalogService(sample_products[0]),
+        agent=NoContentResponseAgent(),
+    )
+
+    try:
+        agent.run("hello")
+    except AgentExecutionError as error:
+        assert error.message == "The LangChain agent returned a message without content."

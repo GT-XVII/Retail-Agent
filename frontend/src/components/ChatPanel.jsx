@@ -33,7 +33,10 @@ export default function ChatPanel() {
     } catch (error) {
       setChatLog((current) => [
         ...current,
-        { role: "assistant", content: error.message },
+        {
+          role: "assistant error",
+          content: formatChatError(error),
+        },
       ]);
     } finally {
       setLoading(false);
@@ -64,4 +67,18 @@ export default function ChatPanel() {
       </form>
     </section>
   );
+}
+
+function formatChatError(error) {
+  const lines = [`${error.code || "chat_error"}: ${error.message}`];
+
+  if (error.status) {
+    lines.push(`HTTP status: ${error.status}`);
+  }
+
+  if (error.details && Object.keys(error.details).length > 0) {
+    lines.push(`Details: ${JSON.stringify(error.details)}`);
+  }
+
+  return lines.join("\n");
 }

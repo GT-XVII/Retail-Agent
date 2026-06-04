@@ -1,4 +1,5 @@
 from app.user_chat.history import InMemoryChatHistoryStore
+from app.errors import AgentExecutionError, ChatServiceError
 from app.user_chat.models import ChatRequest
 from app.user_chat.service import UserChatService
 
@@ -11,6 +12,17 @@ class FakeAgent:
         self.calls.append({"message": message, "history": history})
 
         return f"response to {message}"
+
+
+class FailingHistoryStore:
+    def get_messages(self, user_id, conversation_id):
+        raise RuntimeError("history unavailable")
+
+    def append_message(self, user_id, conversation_id, role, content):
+        raise AssertionError("append should not be reached")
+
+    def clear(self, user_id, conversation_id):
+        pass
 
 
 def test_in_memory_chat_history_store_keeps_messages_by_user_and_conversation():
@@ -86,3 +98,57 @@ def test_user_chat_service_clear_history():
     service.clear_history(request.user_id, request.conversation_id)
 
     assert service.history_store.get_messages(request.user_id, request.conversation_id) == []
+
+
+def test_user_chat_service_preserves_agent_errors():
+    class FailingAgent:
+        def run(self, message, history=None):
+            raise AgentExecutionError("agent failed")
+
+    service = UserChatService(agent_factory=FailingAgent)
+
+    try:
+        service.send_message(ChatRequest(message="hello"))
+    except AgentExecutionError as error:
+        assert error.message == "agent failed"
+
+
+def test_user_chat_service_wraps_history_errors():
+    service = UserChatService(
+        agent_factory=FakeAgent,
+        history_store=FailingHistoryStore(),
+    )
+
+    try:
+        service.send_message(ChatRequest(message="hello"))
+    except ChatServiceError as error:
+        assert error.to_response()["error"]["details"]["message"] == "history unavailable"
+
+
+def test_user_chat_service_wraps_agent_factory_errors():
+    def fail_agent_factory():
+        raise RuntimeError("factory unavailable")
+
+    service = UserChatService(agent_factory=fail_agent_factory)
+
+    try:
+        service._get_agent()
+    except ChatServiceError as error:
+        assert error.to_response()["error"]["details"] == {
+            "type": "RuntimeError",
+            "message": "factory unavailable",
+        }
+
+
+def test_user_chat_service_preserves_agent_factory_retail_errors():
+    error = AgentExecutionError("factory agent error")
+
+    def fail_agent_factory():
+        raise error
+
+    service = UserChatService(agent_factory=fail_agent_factory)
+
+    try:
+        service._get_agent()
+    except AgentExecutionError as raised:
+        assert raised is error
