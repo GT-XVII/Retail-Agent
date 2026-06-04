@@ -41,7 +41,13 @@ source .venv/bin/activate
 Install the packages needed by the dataset scripts:
 
 ```bash
-pip install huggingface_hub pandas pyarrow fastapi uvicorn
+pip install -r requirements.txt
+```
+
+Install development and test dependencies:
+
+```bash
+pip install -r requirements-dev.txt
 ```
 
 Run the FastAPI application from the project root:
@@ -69,6 +75,31 @@ The current FastAPI app exposes:
 * `POST /cart/add` adds an item to the in-memory cart.
 * `GET /cart` returns cart contents and total cost.
 * `POST /chat` accepts a message and returns basic catalogue search results until the LangChain agent is added.
+
+## Tests
+
+Automated tests are built with `pytest` and coverage is configured in `pyproject.toml`.
+
+Run the full test suite with one command:
+
+```bash
+pytest
+```
+
+The test suite is organized as:
+
+```text
+tests/
+├── api/
+│   └── test_main.py
+├── unit/
+│   ├── test_cart_service.py
+│   ├── test_catalog_service.py
+│   └── test_tools_and_agent.py
+└── conftest.py
+```
+
+Coverage currently targets the `app` package and enforces a minimum threshold through `--cov-fail-under`.
 
 ## Building the Demo Catalogue
 
