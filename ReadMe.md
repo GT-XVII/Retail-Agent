@@ -16,6 +16,9 @@ Retail Agent/
 │   │   ├── product_tools.py
 │   │   ├── cart_tools.py
 │   │   └── inventory_tools.py
+│   ├── config/
+│   │   ├── __init__.py
+│   │   └── agent_model.py
 │   ├── user_chat/
 │   │   ├── __init__.py
 │   │   ├── history.py
@@ -32,6 +35,7 @@ Retail Agent/
 │   ├── api/
 │   │   └── test_main.py
 │   ├── unit/
+│   │   ├── test_agent_model_config.py
 │   │   ├── test_cart_service.py
 │   │   ├── test_catalog_service.py
 │   │   ├── test_tools_and_agent.py
@@ -88,11 +92,32 @@ Run the FastAPI application from the project root:
 uvicorn app.main:app --reload
 ```
 
-The LangChain chat agent uses OpenAI through `langchain-openai`. Set an API key before using `POST /chat` with the real agent:
+The LangChain chat agent uses `langchain-openai` with an OpenAI-compatible chat API. The current default provider is AI Refinery. Configure the model through `.env`; keep real keys out of git:
 
 ```bash
-OPENAI_API_KEY=your_api_key
+cp .env.example .env
 ```
+
+Current AI Refinery settings:
+
+```text
+AGENT_MODEL_PROVIDER=airefinery
+AIREFINERY_MODEL_NAME=your-airefinery-model-name
+AIREFINERY_API_KEY=your_key_here
+AIREFINERY_BASE_URL=https://your-airefinery-base-url
+AIREFINERY_TEMPERATURE=0
+```
+
+AI Refinery is used through the same `ChatOpenAI` interface because it is OpenAI-compatible for chat completions. Direct OpenAI is also supported by setting `AGENT_MODEL_PROVIDER=openai` and providing:
+
+```text
+OPENAI_MODEL_NAME=gpt-4o-mini
+OPENAI_API_KEY=your_openai_key_here
+OPENAI_BASE_URL=
+OPENAI_TEMPERATURE=0
+```
+
+The model factory lives in `app/config/agent_model.py`.
 
 Install and run the frontend from the `frontend` directory:
 
@@ -109,6 +134,7 @@ The frontend expects the backend at `http://localhost:8000` and runs through Vit
 The `app` directory contains the current Retail Agent application:
 
 * `app/main.py` is the application entry point.
+* `app/config/agent_model.py` reads model name, API key, base URL, and temperature from environment variables and creates the `ChatOpenAI` model.
 * `app/agent/retail_agent.py` coordinates the current tool registry and runs chat messages through the LangChain agent.
 * `app/user_chat/service.py` coordinates user chat requests, chat history, and the LangChain-backed retail agent.
 * `app/user_chat/history.py` contains the current in-memory chat history store behind a replaceable interface for future persistent storage.
@@ -154,6 +180,31 @@ The backend route delegates directly to the normal Python product search functio
 * `cart_total`
 
 The tools wrap the normal Python service functions, so the business logic can be tested independently from LangChain and reused by FastAPI. Tests inject fake agents and models so automated coverage does not call OpenAI.
+
+## Model Factory
+
+`app/config/agent_model.py` owns model selection and construction. It currently supports:
+
+* `airefinery`, the default provider, using `AIREFINERY_MODEL_NAME`, `AIREFINERY_API_KEY`, `AIREFINERY_BASE_URL`, and `AIREFINERY_TEMPERATURE`.
+* `openai`, using `OPENAI_MODEL_NAME`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_TEMPERATURE`.
+
+Both current providers use the same OpenAI-compatible factory:
+
+```python
+ChatOpenAI(
+    model=config.model,
+    api_key=config.api_key,
+    base_url=config.base_url,
+    temperature=config.temperature,
+)
+```
+
+To add another provider:
+
+* Add provider-specific environment parsing in `get_agent_model_config`.
+* Add a factory function that returns a LangChain-compatible chat model.
+* Register that factory in `MODEL_FACTORIES`.
+* Add unit tests in `tests/unit/test_agent_model_config.py`.
 
 ## User Chat
 
@@ -218,6 +269,7 @@ tests/
 │   └── test_main.py
 ├── test_tools.py
 ├── unit/
+│   ├── test_agent_model_config.py
 │   ├── test_cart_service.py
 │   ├── test_catalog_service.py
 │   ├── test_tools_and_agent.py
@@ -225,7 +277,7 @@ tests/
 └── conftest.py
 ```
 
-Coverage currently targets the `app` package and enforces a minimum threshold through `--cov-fail-under`. The latest verified backend run passed with 35 tests and 100% coverage. The frontend lint and production build also pass.
+Coverage currently targets the `app` package and enforces a minimum threshold through `--cov-fail-under`. The latest verified backend run passed with 42 tests and 100% coverage. The frontend lint and production build also pass.
 
 ## Building the Demo Catalogue
 

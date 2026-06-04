@@ -1,14 +1,11 @@
 """Retail Agent orchestration with LangChain."""
 
-from dotenv import load_dotenv
 from langchain.agents import create_agent
-from langchain_openai import ChatOpenAI
 
+from app.config.agent_model import create_chat_model
 from app.services.cart_service import CartService
 from app.services.catalog_service import CatalogService
 from app.tools import retail_tools
-
-load_dotenv()
 
 
 class RetailAgent:
@@ -23,10 +20,7 @@ class RetailAgent:
 
     def _create_agent(self):
         return create_agent(
-            model=ChatOpenAI(
-                model="gpt-4o-mini",
-                temperature=0,
-            ),
+            model=create_chat_model(),
             tools=self.tools,
             system_prompt=(
                 "You are a retail shopping assistant. "

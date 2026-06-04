@@ -149,24 +149,21 @@ def test_retail_agent_delegates_to_catalog_service_and_exposes_tools(sample_prod
 def test_retail_agent_creates_langchain_agent(monkeypatch, sample_products):
     created = {}
 
-    class FakeChatOpenAI:
-        def __init__(self, model, temperature):
-            created["model"] = model
-            created["temperature"] = temperature
+    fake_model = object()
 
     def fake_create_agent(model, tools, system_prompt):
+        created["model"] = model
         created["tools"] = tools
         created["system_prompt"] = system_prompt
 
         return FakeLangChainAgent()
 
-    monkeypatch.setattr("app.agent.retail_agent.ChatOpenAI", FakeChatOpenAI)
+    monkeypatch.setattr("app.agent.retail_agent.create_chat_model", lambda: fake_model)
     monkeypatch.setattr("app.agent.retail_agent.create_agent", fake_create_agent)
 
     agent = RetailAgent(catalog_service=FakeCatalogService(sample_products[0]))
 
     assert isinstance(agent.agent, FakeLangChainAgent)
-    assert created["model"] == "gpt-4o-mini"
-    assert created["temperature"] == 0
+    assert created["model"] is fake_model
     assert created["tools"] == retail_tools
     assert "retail shopping assistant" in created["system_prompt"]
