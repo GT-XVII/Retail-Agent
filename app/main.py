@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -15,6 +16,13 @@ from app.services.catalog_service import get_product_details, search_products
 
 app = FastAPI(title="Retail Agent")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class AddToCartRequest(BaseModel):
     product_id: str
@@ -27,11 +35,11 @@ class ChatRequest(BaseModel):
 
 @app.get("/products")
 def products(q: str = "", limit: int = 25):
-    results = search_products(q)
+    results = search_products(q, limit=limit)
 
     return {
         "count": len(results),
-        "products": results[:limit],
+        "products": results,
     }
 
 
@@ -60,12 +68,12 @@ def cart():
 
 @app.post("/chat")
 def chat(request: ChatRequest):
-    matches = search_products(request.message)
+    matches = search_products(request.message, limit=5)
 
     return {
         "message": "LangChain is not wired in yet. Returning catalog matches from the Python search function.",
         "query": request.message,
-        "products": matches[:5],
+        "products": matches,
     }
 
 

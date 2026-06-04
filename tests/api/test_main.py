@@ -41,29 +41,43 @@ def test_main_prints_run_command(capsys):
 
 
 def test_products_endpoint_returns_limited_results(monkeypatch, sample_products):
+    calls = []
+
+    def search(query, limit=None):
+        calls.append({"query": query, "limit": limit})
+        return FakeCatalog(sample_products).search(query, limit=limit)
+
     monkeypatch.setattr(
         "app.main.search_products",
-        FakeCatalog(sample_products).search,
+        search,
     )
     client = TestClient(app)
 
     response = client.get("/products?limit=1")
 
     assert response.status_code == 200
-    assert response.json()["count"] == 2
+    assert calls == [{"query": "", "limit": 1}]
+    assert response.json()["count"] == 1
     assert response.json()["products"] == [sample_products[0]]
 
 
 def test_products_endpoint_filters_by_query(monkeypatch, sample_products):
+    calls = []
+
+    def search(query, limit=None):
+        calls.append({"query": query, "limit": limit})
+        return FakeCatalog(sample_products).search(query, limit=limit)
+
     monkeypatch.setattr(
         "app.main.search_products",
-        FakeCatalog(sample_products).search,
+        search,
     )
     client = TestClient(app)
 
     response = client.get("/products?q=monitor")
 
     assert response.status_code == 200
+    assert calls == [{"query": "monitor", "limit": 25}]
     assert response.json()["products"] == [sample_products[1]]
 
 
@@ -146,14 +160,21 @@ def test_cart_endpoint_returns_current_cart(monkeypatch, sample_products):
 
 
 def test_chat_endpoint_returns_basic_search_matches(monkeypatch, sample_products):
+    calls = []
+
+    def search(query, limit=None):
+        calls.append({"query": query, "limit": limit})
+        return FakeCatalog(sample_products).search(query, limit=limit)
+
     monkeypatch.setattr(
         "app.main.search_products",
-        FakeCatalog(sample_products).search,
+        search,
     )
     client = TestClient(app)
 
     response = client.post("/chat", json={"message": "keyboard"})
 
     assert response.status_code == 200
+    assert calls == [{"query": "keyboard", "limit": 5}]
     assert response.json()["query"] == "keyboard"
     assert response.json()["products"] == [sample_products[0]]

@@ -1,6 +1,6 @@
 # Retail Agent
 
-Retail Agent is a proof-of-concept project for building an agentic retail assistant over a structured product catalogue. The current repository includes dataset preparation, a FastAPI surface, normal Python service functions, and LangChain-compatible tools for product, cart, and inventory actions.
+Retail Agent is a proof-of-concept project for building an agentic retail assistant over a structured product catalogue. The current repository includes dataset preparation, a FastAPI backend, a React frontend, normal Python service functions, and LangChain-compatible tools for product, cart, and inventory actions.
 
 The generated catalogue is stored as JSON in `data/electronics_demo_products.json` and is used by the service and tool layers for product search, product details, inventory checks, and cart actions.
 
@@ -39,6 +39,16 @@ Retail Agent/
 ├── data/
 │   ├── full-00000-of-00010.parquet
 │   └── electronics_demo_products.json
+├── frontend/
+│   ├── src/
+│   │   ├── api.js
+│   │   ├── App.jsx
+│   │   └── components/
+│   │       ├── ChatPanel.jsx
+│   │       ├── ProductCard.jsx
+│   │       └── ProductGrid.jsx
+│   ├── package.json
+│   └── vite.config.js
 ├── pyproject.toml
 ├── requirements.txt
 ├── requirements-dev.txt
@@ -72,6 +82,16 @@ Run the FastAPI application from the project root:
 uvicorn app.main:app --reload
 ```
 
+Install and run the frontend from the `frontend` directory:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend expects the backend at `http://localhost:8000` and runs through Vite at `http://localhost:5173`.
+
 ## Application Layout
 
 The `app` directory contains the current Retail Agent application:
@@ -82,6 +102,29 @@ The `app` directory contains the current Retail Agent application:
 * `app/services/cart_service.py` manages a prototype in-memory cart with `add_to_cart(product_id, quantity)`, `remove_from_cart(product_id)`, `view_cart()`, and `calculate_total()`.
 * `app/tools/product_tools.py`, `app/tools/cart_tools.py`, and `app/tools/inventory_tools.py` define LangChain-compatible `@tool` functions.
 * `app/tools/__init__.py` exports `retail_tools`, the shared LangChain tool registry.
+* `frontend/src/App.jsx` provides the classic store search experience.
+* `frontend/src/api.js` calls the FastAPI backend for product search and chat requests.
+* `frontend/src/components/ProductGrid.jsx` and `ProductCard.jsx` render catalogue search results.
+
+## Classic Store Search
+
+The frontend search form behaves like a classic store catalogue search:
+
+```text
+Search form
+  ↓
+frontend/src/api.js fetchProducts(query, limit)
+  ↓
+GET /products?q=...&limit=...
+  ↓
+search_products(query, limit=limit)
+  ↓
+CatalogService.search(query, limit=limit)
+  ↓
+data/electronics_demo_products.json
+```
+
+The backend route delegates directly to the normal Python product search function, so the classic store UI and the future LangChain tool layer share the same catalogue search behavior.
 
 ## LangChain Tools
 
@@ -101,7 +144,7 @@ The tools wrap the normal Python service functions, so the business logic can be
 
 The current FastAPI app exposes:
 
-* `GET /products` returns products, with optional `q` and `limit` query parameters.
+* `GET /products` returns classic catalogue search results, with optional `q` and `limit` query parameters.
 * `GET /products/{id}` returns product details for one product.
 * `POST /cart/add` adds an item to the in-memory cart.
 * `GET /cart` returns cart contents and total cost.
@@ -115,6 +158,13 @@ Run the full test suite with one command:
 
 ```bash
 pytest
+```
+
+Run frontend checks from the `frontend` directory:
+
+```bash
+npm run lint
+npm run build
 ```
 
 The test suite is organized as:
@@ -131,7 +181,7 @@ tests/
 └── conftest.py
 ```
 
-Coverage currently targets the `app` package and enforces a minimum threshold through `--cov-fail-under`. The latest verified run passed with 28 tests and 100% coverage.
+Coverage currently targets the `app` package and enforces a minimum threshold through `--cov-fail-under`. The latest verified backend run passed with 28 tests and 100% coverage. The frontend lint and production build also pass.
 
 ## Building the Demo Catalogue
 
@@ -157,7 +207,7 @@ data/electronics_demo_products.json
 
 ## Product Data Model
 
-The demo JSON catalogue contains product records with fields such as:
+The demo JSON catalogue is built from the Amazon Reviews 2023 Electronics metadata parquet file. `Build_Demo_Catalog.py` filters and normalizes source records into product objects shaped like:
 
 ```text
 product
@@ -175,40 +225,71 @@ product
 └── inventory
 ```
 
-The planned cart model is:
+The current cart is in-memory only and is keyed by `product_id` internally:
 
 ```text
 cart
-├── user_id
-├── product_id
-└── quantity
+└── product_id: quantity
+```
+
+`view_cart()` and `GET /cart` return the cart as enriched line items with a calculated total:
+
+```text
+cart_response
+├── items
+│   └── item
+│       ├── product_id
+│       ├── title
+│       ├── price
+│       ├── quantity
+│       └── line_total
+└── total
 ```
 
 ## Planned Agent Capabilities
 
-The project is intended to support natural language shopping interactions through the LangChain tool layer, such as:
+The project currently has the service and LangChain tool layer needed for product search, product details, inventory checks, cart changes, cart viewing, and cart totals. `RetailAgent` exposes the shared `retail_tools` registry and has a temporary `run(message)` method that returns available tool names until an LLM is wired in.
+
+Current tool-backed capabilities:
+
+* Search the catalogue through the classic store UI and `GET /products`.
+* Search the catalogue through the LangChain `product_search` tool.
+* Retrieve a product by ID with `product_details`.
+* Check inventory with `inventory_check`.
+* Add and remove products with `cart_add` and `cart_remove`.
+* View the cart and total with `cart_view` and `cart_total`.
+
+The intended conversational layer will route natural language requests to these tools, enabling interactions such as:
 
 * "I need a mechanical keyboard for programming on a Mac."
-* "Compare these two monitors and explain which is better for gaming."
 * "Show me wireless headphones under 150 with noise cancellation."
-* "Add the second option to my cart."
+* "Is this product in stock?"
+* "Add this keyboard to my cart."
 * "What is the total cost of my cart?"
 
-Current and planned architecture:
+Current architecture:
 
 ```text
 User
   ↓
-Chat Interface
+React Frontend / FastAPI
   ↓
-LangChain / LangGraph Agent
-  ├── Product Search Tool
-  ├── Product Details Tool
-  ├── Inventory Tool
-  ├── Cart Tool
-  └── Recommendation Tool
+Classic Search Route / RetailAgent
   ↓
-Product Catalogue
+Catalog Service / LangChain Tool Registry
+  ├── product_search
+  ├── product_details
+  ├── inventory_check
+  ├── cart_add
+  ├── cart_remove
+  ├── cart_view
+  └── cart_total
+  ↓
+Python Services
+  ├── CatalogService
+  └── In-Memory Cart
+  ↓
+JSON Product Catalogue
 ```
 
 ## Planned Technology Stack
