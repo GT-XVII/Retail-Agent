@@ -160,21 +160,44 @@ def test_cart_endpoint_returns_current_cart(monkeypatch, sample_products):
 
 
 def test_chat_endpoint_returns_basic_search_matches(monkeypatch, sample_products):
-    calls = []
+    class FakeUserChatService:
+        def __init__(self):
+            self.calls = []
 
-    def search(query, limit=None):
-        calls.append({"query": query, "limit": limit})
-        return FakeCatalog(sample_products).search(query, limit=limit)
+        def send_message(self, request):
+            self.calls.append(request)
 
-    monkeypatch.setattr(
-        "app.main.search_products",
-        search,
-    )
+            return {
+                "message": f"answered {request.message}",
+                "user_id": request.user_id,
+                "conversation_id": request.conversation_id,
+                "history": [
+                    {"role": "user", "content": request.message},
+                    {"role": "assistant", "content": f"answered {request.message}"},
+                ],
+            }
+
+    fake_chat_service = FakeUserChatService()
+    monkeypatch.setattr("app.main.user_chat_service", fake_chat_service)
     client = TestClient(app)
 
-    response = client.post("/chat", json={"message": "keyboard"})
+    response = client.post(
+        "/chat",
+        json={
+            "message": "keyboard",
+            "user_id": "user-1",
+            "conversation_id": "conversation-1",
+        },
+    )
 
     assert response.status_code == 200
-    assert calls == [{"query": "keyboard", "limit": 5}]
-    assert response.json()["query"] == "keyboard"
-    assert response.json()["products"] == [sample_products[0]]
+    assert fake_chat_service.calls[0].message == "keyboard"
+    assert response.json() == {
+        "message": "answered keyboard",
+        "user_id": "user-1",
+        "conversation_id": "conversation-1",
+        "history": [
+            {"role": "user", "content": "keyboard"},
+            {"role": "assistant", "content": "answered keyboard"},
+        ],
+    }

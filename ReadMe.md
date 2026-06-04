@@ -16,6 +16,11 @@ Retail Agent/
 │   │   ├── product_tools.py
 │   │   ├── cart_tools.py
 │   │   └── inventory_tools.py
+│   ├── user_chat/
+│   │   ├── __init__.py
+│   │   ├── history.py
+│   │   ├── models.py
+│   │   └── service.py
 │   ├── services/
 │   │   ├── __init__.py
 │   │   ├── catalog_service.py
@@ -29,7 +34,8 @@ Retail Agent/
 │   ├── unit/
 │   │   ├── test_cart_service.py
 │   │   ├── test_catalog_service.py
-│   │   └── test_tools_and_agent.py
+│   │   ├── test_tools_and_agent.py
+│   │   └── test_user_chat.py
 │   ├── conftest.py
 │   └── test_tools.py
 ├── Dataset Setup/
@@ -82,6 +88,12 @@ Run the FastAPI application from the project root:
 uvicorn app.main:app --reload
 ```
 
+The LangChain chat agent uses OpenAI through `langchain-openai`. Set an API key before using `POST /chat` with the real agent:
+
+```bash
+OPENAI_API_KEY=your_api_key
+```
+
 Install and run the frontend from the `frontend` directory:
 
 ```bash
@@ -97,7 +109,10 @@ The frontend expects the backend at `http://localhost:8000` and runs through Vit
 The `app` directory contains the current Retail Agent application:
 
 * `app/main.py` is the application entry point.
-* `app/agent/retail_agent.py` coordinates the current tool registry and provides a temporary `run(message)` entry point until the LLM layer is added.
+* `app/agent/retail_agent.py` coordinates the current tool registry and runs chat messages through the LangChain agent.
+* `app/user_chat/service.py` coordinates user chat requests, chat history, and the LangChain-backed retail agent.
+* `app/user_chat/history.py` contains the current in-memory chat history store behind a replaceable interface for future persistent storage.
+* `app/user_chat/models.py` defines chat request, response, and message schemas.
 * `app/services/catalog_service.py` loads and queries the local JSON catalogue with `search_products(query)`, `get_product_details(product_id)`, and `check_inventory(product_id)`.
 * `app/services/cart_service.py` manages a prototype in-memory cart with `add_to_cart(product_id, quantity)`, `remove_from_cart(product_id)`, `view_cart()`, and `calculate_total()`.
 * `app/tools/product_tools.py`, `app/tools/cart_tools.py`, and `app/tools/inventory_tools.py` define LangChain-compatible `@tool` functions.
@@ -128,7 +143,7 @@ The backend route delegates directly to the normal Python product search functio
 
 ## LangChain Tools
 
-The current tool registry exposes:
+`RetailAgent` now uses LangChain's agent framework with `ChatOpenAI` and the shared tool registry. The current tool registry exposes:
 
 * `product_search`
 * `product_details`
@@ -138,7 +153,35 @@ The current tool registry exposes:
 * `cart_view`
 * `cart_total`
 
-The tools wrap the normal Python service functions, so the business logic can be tested independently from LangChain and reused by FastAPI.
+The tools wrap the normal Python service functions, so the business logic can be tested independently from LangChain and reused by FastAPI. Tests inject fake agents and models so automated coverage does not call OpenAI.
+
+## User Chat
+
+User chat is separated into `app/user_chat` so chat orchestration can evolve independently from the API routes and agent implementation.
+
+Current flow:
+
+```text
+POST /chat
+  ↓
+ChatRequest
+  ├── message
+  ├── user_id
+  └── conversation_id
+  ↓
+UserChatService
+  ├── load previous history
+  ├── call RetailAgent.run(message, history)
+  └── append user and assistant messages
+  ↓
+ChatResponse
+  ├── message
+  ├── user_id
+  ├── conversation_id
+  └── history
+```
+
+The current history store is in-memory and keyed by `user_id` plus `conversation_id`. That is useful for local development but should be replaced with persistent storage, such as Redis or a database, before running multiple API replicas in Kubernetes.
 
 ## API Endpoints
 
@@ -148,7 +191,7 @@ The current FastAPI app exposes:
 * `GET /products/{id}` returns product details for one product.
 * `POST /cart/add` adds an item to the in-memory cart.
 * `GET /cart` returns cart contents and total cost.
-* `POST /chat` accepts a message and returns basic catalogue search results until the LangChain agent is added.
+* `POST /chat` accepts a chat message, optional `user_id`, and optional `conversation_id`; it routes the request through `UserChatService`, records chat history, and returns the LangChain agent response.
 
 ## Tests
 
@@ -177,11 +220,12 @@ tests/
 ├── unit/
 │   ├── test_cart_service.py
 │   ├── test_catalog_service.py
-│   └── test_tools_and_agent.py
+│   ├── test_tools_and_agent.py
+│   └── test_user_chat.py
 └── conftest.py
 ```
 
-Coverage currently targets the `app` package and enforces a minimum threshold through `--cov-fail-under`. The latest verified backend run passed with 28 tests and 100% coverage. The frontend lint and production build also pass.
+Coverage currently targets the `app` package and enforces a minimum threshold through `--cov-fail-under`. The latest verified backend run passed with 35 tests and 100% coverage. The frontend lint and production build also pass.
 
 ## Building the Demo Catalogue
 
@@ -246,9 +290,9 @@ cart_response
 └── total
 ```
 
-## Planned Agent Capabilities
+## Agent Capabilities
 
-The project currently has the service and LangChain tool layer needed for product search, product details, inventory checks, cart changes, cart viewing, and cart totals. `RetailAgent` exposes the shared `retail_tools` registry and has a temporary `run(message)` method that returns available tool names until an LLM is wired in.
+The project currently has a real LangChain agent wrapper plus the service and tool layer needed for product search, product details, inventory checks, cart changes, cart viewing, and cart totals. `RetailAgent` exposes the shared `retail_tools` registry and runs messages through a `ChatOpenAI` agent.
 
 Current tool-backed capabilities:
 
@@ -274,16 +318,18 @@ User
   ↓
 React Frontend / FastAPI
   ↓
-Classic Search Route / RetailAgent
+Classic Search Route / UserChatService
   ↓
-Catalog Service / LangChain Tool Registry
-  ├── product_search
-  ├── product_details
-  ├── inventory_check
-  ├── cart_add
-  ├── cart_remove
-  ├── cart_view
-  └── cart_total
+Catalog Service / RetailAgent
+  ├── Chat History Store
+  └── LangChain Tool Registry
+      ├── product_search
+      ├── product_details
+      ├── inventory_check
+      ├── cart_add
+      ├── cart_remove
+      ├── cart_view
+      └── cart_total
   ↓
 Python Services
   ├── CatalogService

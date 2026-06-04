@@ -42,6 +42,60 @@ def test_catalog_service_search_applies_limit(sample_products):
     assert service.search("", limit=1) == [sample_products[0]]
 
 
+def test_catalog_service_ranks_stronger_matches_first():
+    service = CatalogService()
+    service.products = [
+        {
+            "id": "cable-1",
+            "title": "Cable Raceway",
+            "brand": "WireCo",
+            "category": "Accessories",
+            "description": "Useful for hiding cables near a monitor.",
+            "features": "",
+            "average_rating": 5,
+            "rating_number": 500,
+        },
+        {
+            "id": "monitor-1",
+            "title": "Gaming Monitor",
+            "brand": "DisplayCo",
+            "category": "Monitors",
+            "description": "Fast display for gaming.",
+            "features": "144 Hz refresh rate",
+            "average_rating": 4,
+            "rating_number": 10,
+        },
+    ]
+
+    assert service.search("monitor") == [
+        service.products[1],
+        service.products[0],
+    ]
+
+
+def test_catalog_service_search_handles_lists_and_stop_words():
+    service = CatalogService()
+    service.products = [
+        {
+            "id": "headphones-1",
+            "title": "Noise Cancelling Headphones",
+            "brand": "AudioCo",
+            "category": ["Electronics", "Headphones"],
+            "description": None,
+            "features": ["wireless", "bluetooth"],
+        }
+    ]
+
+    assert service.search("the wireless headphones") == [service.products[0]]
+
+
+def test_catalog_service_search_ignores_stop_word_only_queries(sample_products):
+    service = CatalogService()
+    service.products = sample_products
+
+    assert service.search("the and or") == []
+
+
 def test_catalog_service_gets_product_and_inventory(sample_products):
     service = CatalogService()
     service.products = sample_products

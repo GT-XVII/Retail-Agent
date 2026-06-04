@@ -8,6 +8,7 @@ single JSON file for use by the Retail Agent application.
 """
 
 import json
+import math
 import random
 import re
 from pathlib import Path
@@ -17,6 +18,72 @@ import pandas as pd
 
 INPUT_FILE = Path("../data/full-00000-of-00010.parquet")
 OUTPUT_FILE = Path("../data/electronics_demo_products.json")
+
+
+# Missing value helpers.
+# Handles None, pandas NaN, numpy NaN, and float NaN consistently.
+def is_missing(value):
+    """Return True when a dataset value is missing or NaN."""
+
+    if value is None:
+        return True
+
+    if isinstance(value, float) and math.isnan(value):
+        return True
+
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def to_json_scalar(value):
+    """Convert a single dataset value into a JSON-safe scalar."""
+
+    if is_missing(value):
+        return None
+
+    return value
+
+
+def to_json_string(value):
+    """Convert a single dataset value into a JSON-safe string."""
+
+    if is_missing(value):
+        return None
+
+    return str(value)
+
+
+def clean_json_value(value):
+    """Recursively convert NaN values into None before JSON export."""
+
+    if is_missing(value):
+        return None
+
+    if isinstance(value, dict):
+        return {key: clean_json_value(item) for key, item in value.items()}
+
+    if isinstance(value, list):
+        return [clean_json_value(item) for item in value]
+
+    return value
+
+
+# Category normalization helpers.
+# Uses the most specific category from the category path when main_category is missing.
+def derive_category(category, categories):
+    """Return the main category or fall back to the most specific category path entry."""
+
+    if not is_missing(category):
+        return str(category)
+
+    category_list = to_json_list(categories)
+
+    if category_list:
+        return category_list[-1]
+
+    return None
 
 
 # Price normalization helpers.
@@ -62,14 +129,14 @@ def join_text(value):
 def to_json_list(value):
     """Convert list-like values into a JSON-safe list of strings."""
 
-    if value is None:
+    if is_missing(value):
         return []
 
     if hasattr(value, "tolist"):
         value = value.tolist()
 
     if isinstance(value, list):
-        return [str(v) for v in value if v is not None]
+        return [str(v) for v in value if not is_missing(v)]
 
     return [str(value)]
 
@@ -134,30 +201,32 @@ def build_catalog():
         if len(description + features) < 150:
             continue
 
-        if row.get("rating_number", 0) < 20:
+        if is_missing(row.get("rating_number")) or row.get("rating_number", 0) < 20:
             continue
 
+        categories = to_json_list(row.get("categories"))
+
         product = {
-            "id": row.get("parent_asin"),
-            "title": row.get("title"),
-            "brand": row.get("store"),
-            "category": row.get("main_category"),
-            "categories": to_json_list(row.get("categories")),
+            "id": to_json_string(row.get("parent_asin")),
+            "title": to_json_string(row.get("title")),
+            "brand": to_json_string(row.get("store")),
+            "category": derive_category(row.get("main_category"), categories),
+            "categories": categories,
             "description": description,
-            "features": join_text(row.get("features")),
+            "features": features,
             "price": price,
             "average_rating": float(row.get("average_rating")),
             "rating_number": int(row.get("rating_number")),
-            "image_url": get_image(row.get("images")),
+            "image_url": to_json_string(get_image(row.get("images"))),
             "inventory": random.randint(0, 50),
         }
 
-        products.append(product)
+        products.append(clean_json_value(product))
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(products, f, indent=2, ensure_ascii=False)
+        json.dump(products, f, indent=2, ensure_ascii=False, allow_nan=False)
 
     print(f"Saved {len(products):,} valid products to {OUTPUT_FILE}")
 

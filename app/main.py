@@ -12,9 +12,12 @@ if __package__ is None:
 
 from app.services.cart_service import add_to_cart, view_cart
 from app.services.catalog_service import get_product_details, search_products
+from app.user_chat.models import ChatRequest
+from app.user_chat.service import UserChatService
 
 
 app = FastAPI(title="Retail Agent")
+user_chat_service = UserChatService()
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,10 +30,6 @@ app.add_middleware(
 class AddToCartRequest(BaseModel):
     product_id: str
     quantity: int = Field(gt=0)
-
-
-class ChatRequest(BaseModel):
-    message: str
 
 
 @app.get("/products")
@@ -68,13 +67,7 @@ def cart():
 
 @app.post("/chat")
 def chat(request: ChatRequest):
-    matches = search_products(request.message, limit=5)
-
-    return {
-        "message": "LangChain is not wired in yet. Returning catalog matches from the Python search function.",
-        "query": request.message,
-        "products": matches,
-    }
+    return user_chat_service.send_message(request)
 
 
 def main():

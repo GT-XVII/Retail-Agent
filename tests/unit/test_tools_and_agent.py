@@ -30,6 +30,25 @@ class FakeCatalogService:
         return {"product_id": product_id, "inventory": self.product["inventory"]}
 
 
+class FakeMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class FakeLangChainAgent:
+    def __init__(self):
+        self.calls = []
+
+    def invoke(self, payload):
+        self.calls.append(payload)
+
+        return {
+            "messages": [
+                FakeMessage("assistant response"),
+            ]
+        }
+
+
 def test_retail_tools_registry_contains_langchain_tools():
     assert [tool.name for tool in retail_tools] == [
         "product_search",
@@ -99,7 +118,11 @@ def test_cart_tools_invoke_cart_service_functions(monkeypatch):
 
 def test_retail_agent_delegates_to_catalog_service_and_exposes_tools(sample_products):
     product = sample_products[0]
-    agent = RetailAgent(catalog_service=FakeCatalogService(product))
+    fake_langchain_agent = FakeLangChainAgent()
+    agent = RetailAgent(
+        catalog_service=FakeCatalogService(product),
+        agent=fake_langchain_agent,
+    )
 
     assert agent.get_tools() == retail_tools
     assert agent.search_products("keyboard", limit=1) == [product]
@@ -109,7 +132,41 @@ def test_retail_agent_delegates_to_catalog_service_and_exposes_tools(sample_prod
         "product_id": "keyboard-1",
         "inventory": 7,
     }
-    assert agent.run("hello") == {
-        "message": "hello",
-        "available_tools": [tool.name for tool in retail_tools],
-    }
+    assert agent.run(
+        "hello",
+        history=[{"role": "assistant", "content": "previous"}],
+    ) == "assistant response"
+    assert fake_langchain_agent.calls == [
+        {
+            "messages": [
+                {"role": "assistant", "content": "previous"},
+                {"role": "user", "content": "hello"},
+            ]
+        }
+    ]
+
+
+def test_retail_agent_creates_langchain_agent(monkeypatch, sample_products):
+    created = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, model, temperature):
+            created["model"] = model
+            created["temperature"] = temperature
+
+    def fake_create_agent(model, tools, system_prompt):
+        created["tools"] = tools
+        created["system_prompt"] = system_prompt
+
+        return FakeLangChainAgent()
+
+    monkeypatch.setattr("app.agent.retail_agent.ChatOpenAI", FakeChatOpenAI)
+    monkeypatch.setattr("app.agent.retail_agent.create_agent", fake_create_agent)
+
+    agent = RetailAgent(catalog_service=FakeCatalogService(sample_products[0]))
+
+    assert isinstance(agent.agent, FakeLangChainAgent)
+    assert created["model"] == "gpt-4o-mini"
+    assert created["temperature"] == 0
+    assert created["tools"] == retail_tools
+    assert "retail shopping assistant" in created["system_prompt"]
