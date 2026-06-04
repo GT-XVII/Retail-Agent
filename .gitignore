@@ -1,8 +1,30 @@
-data/electronics_metadata.parquet
-data/full-00000-of-00010.parquet
+# Environment
 .env
+.env.*
+!.env.example
 .venv/
+venv/
+env/
+
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.python-version
+
+# Test and coverage output
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+coverage.xml
+junit.xml
+
+# Local development
+.DS_Store
+*.log
+
+# Generated datasets and catalog outputs
+data/*.parquet
+data/*_demo_products.json

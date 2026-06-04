@@ -18,19 +18,24 @@ class CatalogService:
         with open(self.catalog_path, "r", encoding="utf-8") as catalog_file:
             return json.load(catalog_file)
 
-    def search(self, query):
+    def search(self, query, limit=None):
         query = query.lower()
 
         if not query:
-            return self.products
+            results = self.products
+        else:
+            results = [
+                product
+                for product in self.products
+                if query in product.get("title", "").lower()
+                or query in product.get("description", "").lower()
+                or query in product.get("features", "").lower()
+            ]
 
-        return [
-            product
-            for product in self.products
-            if query in product.get("title", "").lower()
-            or query in product.get("description", "").lower()
-            or query in product.get("features", "").lower()
-        ]
+        if limit is None:
+            return results
+
+        return results[:limit]
 
     def get_product(self, product_id):
         return next(
@@ -53,10 +58,10 @@ class CatalogService:
 catalog_service = CatalogService()
 
 
-def search_products(query):
+def search_products(query, limit=None):
     """Search products by title, description, or features."""
 
-    return catalog_service.search(query)
+    return catalog_service.search(query, limit=limit)
 
 
 def get_product_details(product_id):

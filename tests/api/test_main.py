@@ -8,19 +8,24 @@ class FakeCatalog:
     def __init__(self, products):
         self.products = products
 
-    def search(self, query):
+    def search(self, query, limit=None):
         if not query:
-            return self.products
+            results = self.products
+        else:
+            query = query.lower()
 
-        query = query.lower()
+            results = [
+                product
+                for product in self.products
+                if query in product["title"].lower()
+                or query in product["description"].lower()
+                or query in product["features"].lower()
+            ]
 
-        return [
-            product
-            for product in self.products
-            if query in product["title"].lower()
-            or query in product["description"].lower()
-            or query in product["features"].lower()
-        ]
+        if limit is None:
+            return results
+
+        return results[:limit]
 
     def get_product(self, product_id):
         return next(

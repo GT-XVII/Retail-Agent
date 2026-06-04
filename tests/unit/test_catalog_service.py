@@ -35,6 +35,13 @@ def test_catalog_service_empty_search_returns_all_products(sample_products):
     assert service.search("") == sample_products
 
 
+def test_catalog_service_search_applies_limit(sample_products):
+    service = CatalogService()
+    service.products = sample_products
+
+    assert service.search("", limit=1) == [sample_products[0]]
+
+
 def test_catalog_service_gets_product_and_inventory(sample_products):
     service = CatalogService()
     service.products = sample_products
@@ -53,7 +60,7 @@ def test_module_level_catalog_functions_use_shared_service(monkeypatch, sample_p
     service.products = sample_products
     monkeypatch.setattr(catalog_module, "catalog_service", service)
 
-    assert catalog_module.search_products("monitor") == [sample_products[1]]
+    assert catalog_module.search_products("monitor", limit=1) == [sample_products[1]]
     assert catalog_module.get_product_details("keyboard-1") == sample_products[0]
     assert catalog_module.check_inventory("monitor-1") == {
         "product_id": "monitor-1",

@@ -1,24 +1,37 @@
 # Retail Agent
 
-Retail Agent is a proof-of-concept project for building an agentic retail assistant over a structured product catalogue. The current repository is focused on preparing a demo electronics catalogue from the Amazon Reviews 2023 metadata dataset.
+Retail Agent is a proof-of-concept project for building an agentic retail assistant over a structured product catalogue. The current repository includes dataset preparation, a FastAPI surface, normal Python service functions, and LangChain-compatible tools for product, cart, and inventory actions.
 
-The generated catalogue is stored as JSON in `data/electronics_demo_products.json` and is intended to be used by the future LangChain or LangGraph agent layer for product search, comparison, inventory checks, recommendations, and cart actions.
+The generated catalogue is stored as JSON in `data/electronics_demo_products.json` and is used by the service and tool layers for product search, product details, inventory checks, and cart actions.
 
 ## Current Project Structure
 
 ```text
 Retail Agent/
 ├── app/
+│   ├── __init__.py
 │   ├── main.py
 │   ├── tools/
+│   │   ├── __init__.py
 │   │   ├── product_tools.py
 │   │   ├── cart_tools.py
 │   │   └── inventory_tools.py
 │   ├── services/
+│   │   ├── __init__.py
 │   │   ├── catalog_service.py
 │   │   └── cart_service.py
 │   └── agent/
+│       ├── __init__.py
 │       └── retail_agent.py
+├── tests/
+│   ├── api/
+│   │   └── test_main.py
+│   ├── unit/
+│   │   ├── test_cart_service.py
+│   │   ├── test_catalog_service.py
+│   │   └── test_tools_and_agent.py
+│   ├── conftest.py
+│   └── test_tools.py
 ├── Dataset Setup/
 │   ├── Get_HuggingFace_Dataset.py
 │   ├── Build_Demo_Catalog.py
@@ -26,6 +39,9 @@ Retail Agent/
 ├── data/
 │   ├── full-00000-of-00010.parquet
 │   └── electronics_demo_products.json
+├── pyproject.toml
+├── requirements.txt
+├── requirements-dev.txt
 └── ReadMe.md
 ```
 
@@ -58,13 +74,28 @@ uvicorn app.main:app --reload
 
 ## Application Layout
 
-The `app` directory contains the initial Retail Agent application skeleton:
+The `app` directory contains the current Retail Agent application:
 
 * `app/main.py` is the application entry point.
-* `app/agent/retail_agent.py` will coordinate the agent workflow.
+* `app/agent/retail_agent.py` coordinates the current tool registry and provides a temporary `run(message)` entry point until the LLM layer is added.
 * `app/services/catalog_service.py` loads and queries the local JSON catalogue with `search_products(query)`, `get_product_details(product_id)`, and `check_inventory(product_id)`.
 * `app/services/cart_service.py` manages a prototype in-memory cart with `add_to_cart(product_id, quantity)`, `remove_from_cart(product_id)`, `view_cart()`, and `calculate_total()`.
-* `app/tools/product_tools.py`, `app/tools/cart_tools.py`, and `app/tools/inventory_tools.py` are the tool boundaries the future LangChain or LangGraph agent can call.
+* `app/tools/product_tools.py`, `app/tools/cart_tools.py`, and `app/tools/inventory_tools.py` define LangChain-compatible `@tool` functions.
+* `app/tools/__init__.py` exports `retail_tools`, the shared LangChain tool registry.
+
+## LangChain Tools
+
+The current tool registry exposes:
+
+* `product_search`
+* `product_details`
+* `inventory_check`
+* `cart_add`
+* `cart_remove`
+* `cart_view`
+* `cart_total`
+
+The tools wrap the normal Python service functions, so the business logic can be tested independently from LangChain and reused by FastAPI.
 
 ## API Endpoints
 
@@ -92,6 +123,7 @@ The test suite is organized as:
 tests/
 ├── api/
 │   └── test_main.py
+├── test_tools.py
 ├── unit/
 │   ├── test_cart_service.py
 │   ├── test_catalog_service.py
@@ -99,7 +131,7 @@ tests/
 └── conftest.py
 ```
 
-Coverage currently targets the `app` package and enforces a minimum threshold through `--cov-fail-under`.
+Coverage currently targets the `app` package and enforces a minimum threshold through `--cov-fail-under`. The latest verified run passed with 28 tests and 100% coverage.
 
 ## Building the Demo Catalogue
 
@@ -154,7 +186,7 @@ cart
 
 ## Planned Agent Capabilities
 
-The project is intended to support natural language shopping interactions such as:
+The project is intended to support natural language shopping interactions through the LangChain tool layer, such as:
 
 * "I need a mechanical keyboard for programming on a Mac."
 * "Compare these two monitors and explain which is better for gaming."
@@ -162,7 +194,7 @@ The project is intended to support natural language shopping interactions such a
 * "Add the second option to my cart."
 * "What is the total cost of my cart?"
 
-Planned architecture:
+Current and planned architecture:
 
 ```text
 User
