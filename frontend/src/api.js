@@ -92,3 +92,50 @@ export async function sendChatMessage(message) {
 
   return response.json();
 }
+
+export async function fetchCart() {
+  const response = await fetch(`${API_BASE}/cart`);
+
+  if (!response.ok) {
+    await parseErrorResponse(response, "Failed to fetch cart");
+  }
+
+  return response.json();
+}
+
+export async function addToCart(productId, quantity = 1) {
+  const response = await fetch(`${API_BASE}/cart/add`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      product_id: productId,
+      quantity,
+    }),
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response, "Failed to add item to cart");
+  }
+
+  return response.json();
+}
+
+export async function removeFromCart(productId) {
+  const response = await fetch(`${API_BASE}/cart/remove`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      product_id: productId,
+    }),
+  });
+
+  if (!response.ok) {
+    await parseErrorResponse(response, "Failed to remove item from cart");
+  }
+
+  return response.json();
+}

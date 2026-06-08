@@ -1,4 +1,6 @@
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, onAddToCart }) {
+  const inStock = product.inventory > 0;
+
   return (
     <div className="product-card">
       {product.image_url && (
@@ -16,10 +18,19 @@ export default function ProductCard({ product }) {
       </p>
 
       <p className="stock">
-        {product.inventory > 0 ? `${product.inventory} in stock` : "Out of stock"}
+        {inStock ? `${product.inventory} in stock` : "Out of stock"}
       </p>
 
       <p className="features">{product.features}</p>
+
+      <button
+        type="button"
+        className="add-cart-button"
+        disabled={!inStock}
+        onClick={() => onAddToCart(product.id)}
+      >
+        Add to cart
+      </button>
     </div>
   );
 }

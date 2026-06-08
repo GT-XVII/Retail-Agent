@@ -160,6 +160,26 @@ def test_cart_endpoint_returns_current_cart(monkeypatch, sample_products):
     cart_service.cart.clear()
 
 
+def test_cart_remove_endpoint_removes_item(monkeypatch, sample_products):
+    cart_service.cart.clear()
+    cart_service.cart["keyboard-1"] = 1
+    monkeypatch.setattr(
+        "app.services.cart_service.get_product_details",
+        FakeCatalog(sample_products).get_product,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/cart/remove",
+        json={"product_id": "keyboard-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0}
+
+    cart_service.cart.clear()
+
+
 def test_chat_endpoint_returns_basic_search_matches(monkeypatch, sample_products):
     class FakeUserChatService:
         def __init__(self):

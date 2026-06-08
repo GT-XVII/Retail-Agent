@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { fetchProducts } from "./api";
+import { addToCart, fetchCart, fetchProducts, removeFromCart } from "./api";
+import CartPanel from "./components/CartPanel";
 import ChatPanel from "./components/ChatPanel";
 import ProductGrid from "./components/ProductGrid";
 import "./index.css";
@@ -9,6 +10,9 @@ export default function App() {
   const [products, setProducts] = useState([]);
   const [limit, setLimit] = useState(50);
   const [loading, setLoading] = useState(true);
+  const [cart, setCart] = useState({ items: [], total: 0 });
+  const [cartLoading, setCartLoading] = useState(false);
+  const [cartError, setCartError] = useState("");
 
   async function loadProducts(searchQuery = query) {
     setLoading(true);
@@ -41,9 +45,52 @@ export default function App() {
     };
   }, [limit]);
 
+  useEffect(() => {
+    loadCart();
+  }, []);
+
   function handleSearch(event) {
     event.preventDefault();
     loadProducts(query);
+  }
+
+  async function loadCart() {
+    setCartLoading(true);
+    setCartError("");
+
+    try {
+      setCart(await fetchCart());
+    } catch (error) {
+      setCartError(formatError(error));
+    } finally {
+      setCartLoading(false);
+    }
+  }
+
+  async function handleAddToCart(productId) {
+    setCartLoading(true);
+    setCartError("");
+
+    try {
+      setCart(await addToCart(productId, 1));
+    } catch (error) {
+      setCartError(formatError(error));
+    } finally {
+      setCartLoading(false);
+    }
+  }
+
+  async function handleRemoveFromCart(productId) {
+    setCartLoading(true);
+    setCartError("");
+
+    try {
+      setCart(await removeFromCart(productId));
+    } catch (error) {
+      setCartError(formatError(error));
+    } finally {
+      setCartLoading(false);
+    }
   }
 
   return (
@@ -81,11 +128,34 @@ export default function App() {
             </form>
           </div>
 
-          {loading ? <p>Loading products...</p> : <ProductGrid products={products} />}
+          {loading ? (
+            <p>Loading products...</p>
+          ) : (
+            <ProductGrid
+              products={products}
+              onAddToCart={handleAddToCart}
+            />
+          )}
         </section>
 
-        <ChatPanel />
+        <aside className="side-panel">
+          <CartPanel
+            cart={cart}
+            loading={cartLoading}
+            error={cartError}
+            onRemove={handleRemoveFromCart}
+          />
+          <ChatPanel onCartChange={loadCart} />
+        </aside>
       </div>
     </main>
   );
+}
+
+function formatError(error) {
+  if (error.code) {
+    return `${error.code}: ${error.message}`;
+  }
+
+  return error.message;
 }

@@ -12,7 +12,7 @@ if __package__ is None:
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.errors import RetailAgentError
-from app.services.cart_service import add_to_cart, view_cart
+from app.services.cart_service import add_to_cart, remove_from_cart, view_cart
 from app.services.catalog_service import get_product_details, search_products
 from app.user_chat.models import ChatRequest
 from app.user_chat.service import UserChatService
@@ -43,6 +43,10 @@ class AddToCartRequest(BaseModel):
     quantity: int = Field(gt=0)
 
 
+class RemoveFromCartRequest(BaseModel):
+    product_id: str
+
+
 @app.get("/products")
 def products(q: str = "", limit: int = 25):
     results = search_products(q, limit=limit)
@@ -69,6 +73,11 @@ def cart_add(request: AddToCartRequest):
         return add_to_cart(request.product_id, request.quantity)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/cart/remove")
+def cart_remove(request: RemoveFromCartRequest):
+    return remove_from_cart(request.product_id)
 
 
 @app.get("/cart")

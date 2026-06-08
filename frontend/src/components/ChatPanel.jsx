@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { sendChatMessage } from "../api";
 
-export default function ChatPanel() {
+export default function ChatPanel({ onCartChange }) {
   const [message, setMessage] = useState("");
   const [chatLog, setChatLog] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -22,6 +22,7 @@ export default function ChatPanel() {
 
     try {
       const response = await sendChatMessage(userMessage);
+      onCartChange?.();
 
       setChatLog((current) => [
         ...current,
