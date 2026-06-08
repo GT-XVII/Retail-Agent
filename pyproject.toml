@@ -10,6 +10,10 @@ pythonpath = ["."]
 [tool.coverage.run]
 branch = true
 source = ["app"]
+omit = [
+    "app/config/local_*.py",
+    "app/config/private_*.py",
+]
 
 [tool.coverage.report]
 show_missing = true

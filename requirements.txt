@@ -5,5 +5,4 @@ fastapi
 uvicorn
 langchain
 langchain-core
-langchain-openai
 python-dotenv

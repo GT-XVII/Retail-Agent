@@ -92,32 +92,24 @@ Run the FastAPI application from the project root:
 uvicorn app.main:app --reload
 ```
 
-The LangChain chat agent uses `langchain-openai` with an OpenAI-compatible chat API. The current default provider is AI Refinery. Configure the model through `.env`; keep real keys out of git:
+The LangChain chat agent uses a configurable custom chat model factory. Configure the model through `.env`; keep real keys and provider-specific implementation details out of git:
 
 ```bash
 cp .env.example .env
 ```
 
-Current AI Refinery settings:
+Public environment shape:
 
 ```text
-AGENT_MODEL_PROVIDER=airefinery
-AIREFINERY_MODEL_NAME=your-airefinery-model-name
-AIREFINERY_API_KEY=your_key_here
-AIREFINERY_BASE_URL=https://your-airefinery-base-url
-AIREFINERY_TEMPERATURE=0
+AGENT_MODEL_PROVIDER=custom
+MODEL_NAME=your-model-name
+MODEL_API_KEY=your_model_api_key
+MODEL_TEMPERATURE=0
+MODEL_FACTORY_MODULE=app.config.local_chat_model
+MODEL_FACTORY_FUNCTION=create_chat_model
 ```
 
-AI Refinery is used through the same `ChatOpenAI` interface because it is OpenAI-compatible for chat completions. Direct OpenAI is also supported by setting `AGENT_MODEL_PROVIDER=openai` and providing:
-
-```text
-OPENAI_MODEL_NAME=gpt-4o-mini
-OPENAI_API_KEY=your_openai_key_here
-OPENAI_BASE_URL=
-OPENAI_TEMPERATURE=0
-```
-
-The model factory lives in `app/config/agent_model.py`.
+`app/config/agent_model.py` loads the configured factory dynamically. Provider-specific adapters should live in ignored local files such as `app/config/local_chat_model.py` or `app/config/private_chat_model.py`.
 
 Install and run the frontend from the `frontend` directory:
 
@@ -134,7 +126,7 @@ The frontend expects the backend at `http://localhost:8000` and runs through Vit
 The `app` directory contains the current Retail Agent application:
 
 * `app/main.py` is the application entry point.
-* `app/config/agent_model.py` reads model name, API key, base URL, and temperature from environment variables and creates the `ChatOpenAI` model.
+* `app/config/agent_model.py` reads provider, model name, API key, and temperature from environment variables and creates the configured chat model.
 * `app/agent/retail_agent.py` coordinates the current tool registry and runs chat messages through the LangChain agent.
 * `app/user_chat/service.py` coordinates user chat requests, chat history, and the LangChain-backed retail agent.
 * `app/user_chat/history.py` contains the current in-memory chat history store behind a replaceable interface for future persistent storage.
@@ -169,7 +161,7 @@ The backend route delegates directly to the normal Python product search functio
 
 ## LangChain Tools
 
-`RetailAgent` now uses LangChain's agent framework with `ChatOpenAI` and the shared tool registry. The current tool registry exposes:
+`RetailAgent` now uses LangChain's agent framework with the configured custom chat model and the shared tool registry. The current tool registry exposes:
 
 * `product_search`
 * `product_details`
@@ -179,29 +171,19 @@ The backend route delegates directly to the normal Python product search functio
 * `cart_view`
 * `cart_total`
 
-The tools wrap the normal Python service functions, so the business logic can be tested independently from LangChain and reused by FastAPI. Tests inject fake agents and models so automated coverage does not call OpenAI.
+The tools wrap the normal Python service functions, so the business logic can be tested independently from LangChain and reused by FastAPI. Tests inject fake agents and models so automated coverage does not call external model providers.
 
 ## Model Factory
 
 `app/config/agent_model.py` owns model selection and construction. It currently supports:
 
-* `airefinery`, the default provider, using `AIREFINERY_MODEL_NAME`, `AIREFINERY_API_KEY`, `AIREFINERY_BASE_URL`, and `AIREFINERY_TEMPERATURE`.
-* `openai`, using `OPENAI_MODEL_NAME`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_TEMPERATURE`.
+* `custom`, the default provider, using `MODEL_NAME`, `MODEL_API_KEY`, `MODEL_TEMPERATURE`, `MODEL_FACTORY_MODULE`, and `MODEL_FACTORY_FUNCTION`.
 
-Both current providers use the same OpenAI-compatible factory:
-
-```python
-ChatOpenAI(
-    model=config.model,
-    api_key=config.api_key,
-    base_url=config.base_url,
-    temperature=config.temperature,
-)
-```
+The committed factory does not import any private SDK. Instead, it dynamically loads the configured local factory function. That local function must return a LangChain-compatible chat model.
 
 To add another provider:
 
-* Add provider-specific environment parsing in `get_agent_model_config`.
+* Add provider-specific environment parsing in `get_agent_model_config`, or point `MODEL_FACTORY_MODULE` at an ignored local module.
 * Add a factory function that returns a LangChain-compatible chat model.
 * Register that factory in `MODEL_FACTORIES`.
 * Add unit tests in `tests/unit/test_agent_model_config.py`.
@@ -277,7 +259,7 @@ tests/
 └── conftest.py
 ```
 
-Coverage currently targets the `app` package and enforces a minimum threshold through `--cov-fail-under`. The latest verified backend run passed with 42 tests and 100% coverage. The frontend lint and production build also pass.
+Coverage currently targets the `app` package and enforces a minimum threshold through `--cov-fail-under`. The latest verified backend run passed with 53 tests and 100% coverage. The frontend lint and production build also pass.
 
 ## Building the Demo Catalogue
 
@@ -344,7 +326,7 @@ cart_response
 
 ## Agent Capabilities
 
-The project currently has a real LangChain agent wrapper plus the service and tool layer needed for product search, product details, inventory checks, cart changes, cart viewing, and cart totals. `RetailAgent` exposes the shared `retail_tools` registry and runs messages through a `ChatOpenAI` agent.
+The project currently has a real LangChain agent wrapper plus the service and tool layer needed for product search, product details, inventory checks, cart changes, cart viewing, and cart totals. `RetailAgent` exposes the shared `retail_tools` registry and runs messages through the configured LangChain chat model.
 
 Current tool-backed capabilities:
 

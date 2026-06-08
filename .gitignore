@@ -24,6 +24,8 @@ junit.xml
 # Local development
 .DS_Store
 *.log
+app/config/local_*.py
+app/config/private_*.py
 
 # Generated datasets and catalog outputs
 data/*.parquet

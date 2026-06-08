@@ -1,11 +1,11 @@
 """Agent model factory configuration."""
 
+import importlib
 import os
 from dataclasses import dataclass
 from typing import Callable
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 
 from app.errors import ModelConfigurationError
 
@@ -17,8 +17,9 @@ class AgentModelConfig:
     provider: str
     model: str
     api_key: str | None
-    base_url: str | None
     temperature: float
+    factory_module: str
+    factory_function: str
 
 
 ModelFactory = Callable[[AgentModelConfig], object]
@@ -27,13 +28,10 @@ ModelFactory = Callable[[AgentModelConfig], object]
 def get_agent_model_config(provider=None):
     """Read agent model settings from environment variables."""
 
-    provider = (provider or os.getenv("AGENT_MODEL_PROVIDER", "airefinery")).lower()
+    provider = (provider or os.getenv("AGENT_MODEL_PROVIDER", "custom")).lower()
 
-    if provider == "airefinery":
-        return _get_airefinery_config()
-
-    if provider == "openai":
-        return _get_openai_config()
+    if provider == "custom":
+        return _get_custom_model_config()
 
     raise ModelConfigurationError(
         "Unsupported agent model provider.",
@@ -41,53 +39,57 @@ def get_agent_model_config(provider=None):
     )
 
 
-def _get_airefinery_config():
-    """Read AI Refinery settings for its OpenAI-compatible chat API."""
+def _get_custom_model_config():
+    """Read private/custom model provider settings."""
 
     return AgentModelConfig(
-        provider="airefinery",
-        model=os.getenv("AIREFINERY_MODEL_NAME", "openai/gpt-oss-120b"),
-        api_key=os.getenv("AIREFINERY_API_KEY"),
-        base_url=os.getenv("AIREFINERY_BASE_URL"),
-        temperature=float(os.getenv("AIREFINERY_TEMPERATURE", "0")),
+        provider="custom",
+        model=os.getenv("MODEL_NAME", "your-model-name"),
+        api_key=os.getenv("MODEL_API_KEY"),
+        temperature=float(os.getenv("MODEL_TEMPERATURE", "0")),
+        factory_module=os.getenv(
+            "MODEL_FACTORY_MODULE",
+            "app.config.local_chat_model",
+        ),
+        factory_function=os.getenv(
+            "MODEL_FACTORY_FUNCTION",
+            "create_chat_model",
+        ),
     )
 
 
-def _get_openai_config():
-    """Read direct OpenAI settings."""
-
-    return AgentModelConfig(
-        provider="openai",
-        model=os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
-        api_key=os.getenv("OPENAI_API_KEY"),
-        base_url=os.getenv("OPENAI_BASE_URL"),
-        temperature=float(os.getenv("OPENAI_TEMPERATURE", "0")),
-    )
-
-
-def create_openai_compatible_chat_model(config):
-    """Create a ChatOpenAI model for OpenAI-compatible chat APIs."""
+def create_custom_chat_model(config):
+    """Create a LangChain chat model from a private provider factory."""
 
     if not config.api_key:
         raise ModelConfigurationError(
             "Missing API key for agent model provider.",
             details={
                 "provider": config.provider,
-                "expected_env": _provider_api_key_env(config.provider),
+                "expected_env": "MODEL_API_KEY",
             },
         )
 
-    return ChatOpenAI(
-        model=config.model,
-        api_key=config.api_key,
-        base_url=config.base_url,
-        temperature=config.temperature,
-    )
+    try:
+        module = importlib.import_module(config.factory_module)
+        factory = getattr(module, config.factory_function)
+    except (ImportError, AttributeError) as error:
+        raise ModelConfigurationError(
+            "Could not load the configured model factory.",
+            details={
+                "provider": config.provider,
+                "factory_module": config.factory_module,
+                "factory_function": config.factory_function,
+                "type": type(error).__name__,
+                "message": str(error),
+            },
+        ) from error
+
+    return factory(config)
 
 
 MODEL_FACTORIES: dict[str, ModelFactory] = {
-    "airefinery": create_openai_compatible_chat_model,
-    "openai": create_openai_compatible_chat_model,
+    "custom": create_custom_chat_model,
 }
 
 
@@ -104,10 +106,3 @@ def create_chat_model(config=None):
         )
 
     return factory(config)
-
-
-def _provider_api_key_env(provider):
-    return {
-        "airefinery": "AIREFINERY_API_KEY",
-        "openai": "OPENAI_API_KEY",
-    }.get(provider, "provider-specific API key environment variable")
